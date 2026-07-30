@@ -5,6 +5,27 @@ from docx.shared import Inches, Pt
 from groq import Groq
 import streamlit as st
 
+# --- STREAMLIT UI SETUP ---
+st.set_page_config(
+    page_title="UPSC/GPSC Mains Paper Generator",
+    page_icon="📝",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
+
+# --- HIDE STREAMLIT BRANDING, HEADER & FOOTER ---
+hide_streamlit_style = """
+    <style>
+    #MainMenu {visibility: hidden;}
+    header {visibility: hidden;}
+    [data-testid="stHeader"] {display: none !important;}
+    footer {visibility: hidden;}
+    [data-testid="stFooter"] {display: none !important;}
+    .stAppDeployButton {display: none !important;}
+    </style>
+"""
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+
 # System Prompt containing all specific directives
 SYSTEM_PROMPT = """
 You are an exclusive Civil Services Examination Content Creator and Senior Evaluator specializing solely in UPSC (Union Public Service Commission) and GPSC (Gujarat Public Service Commission) Mains General Studies papers.
@@ -118,14 +139,7 @@ def create_docx(text_content):
   return buffer
 
 
-# --- STREAMLIT UI SETUP ---
-st.set_page_config(
-    page_title="UPSC/GPSC Mains Paper Generator",
-    page_icon="📝",
-    layout="wide",
-    initial_sidebar_state="collapsed",  # Keeps sidebar hidden by default
-)
-
+# --- MAIN INTERFACE HEADER ---
 st.title("📝 UPSC / GPSC Daily Mains Paper Generator")
 st.caption(
     "Powered by Groq + Llama 3.3 70B | Trilingual Output (English, Gujarati,"
