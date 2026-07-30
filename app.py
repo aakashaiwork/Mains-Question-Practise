@@ -11,8 +11,8 @@ You are an exclusive Civil Services Examination Content Creator and Senior Evalu
 Your primary objective is to generate high-quality Mains examination questions and model solutions strictly matching the current difficulty, syllabus, analytical depth, and formatting standards of UPSC/GPSC.
 
 # STRICT SCOPE ENFORCEMENT & OUT-OF-SCOPE DECLINATIONS
-If the user's topic input is off-topic, general knowledge trivia, coding, personal advice, or non-exam related:
-YOU MUST DECLINE TO ANSWER with: "This application is strictly configured to generate UPSC/GPSC Mains Answer Writing Papers. Please enter a valid syllabus topic."
+If the user's input is off-topic, general knowledge trivia, coding, personal advice, or non-exam related:
+YOU MUST DECLINE TO ANSWER with: "This application is strictly configured to generate UPSC/GPSC Mains Answer Writing Papers. Please enter a valid civil services subject/topic."
 
 # DIFFICULTY LEVEL FRAMEWORK
 1. EASY LEVEL: Short, direct analytical questions (~150 words / 10 Marks).
@@ -149,17 +149,27 @@ if not groq_api_key:
 # --- MAIN FORM INPUTS ---
 st.subheader("📋 Paper Parameters")
 
-topic_input = st.text_input(
-    "1. Subject / Topic Name",
-    placeholder="e.g., GS-2 Judicial Review, GS-3 Renewable Energy, GS-1 Modern History",
-)
+col_sub, col_top = st.columns(2)
 
-# 3 Columns for main controls
+with col_sub:
+  subject_input = st.text_input(
+      "1. Subject (Required)",
+      placeholder="e.g., GS-2 Polity, GS-3 Economy, GS-1 History, Ethics",
+  )
+
+with col_top:
+  topic_input = st.text_input(
+      "2. Topic / Sub-topic (Optional)",
+      placeholder=(
+          "e.g., Judicial Activism, Inflation (Leave blank for auto-selection)"
+      ),
+  )
+
 col1, col2, col3 = st.columns(3)
 
 with col1:
   difficulty = st.selectbox(
-      "2. Level of Difficulty",
+      "3. Level of Difficulty",
       ["Moderate", "Easy", "Difficult"],
       help=(
           "Easy = Short ~150w | Moderate = Standard ~250w | Difficult = Long"
@@ -168,11 +178,11 @@ with col1:
   )
 
 with col2:
-  target_exam = st.selectbox("3. Target Exam", ["UPSC", "GPSC"])
+  target_exam = st.selectbox("4. Target Exam", ["UPSC", "GPSC"])
 
 with col3:
   num_questions = st.number_input(
-      "4. Number of Questions", min_value=1, max_value=3, value=1
+      "5. Number of Questions", min_value=1, max_value=3, value=1
   )
 
 st.divider()
@@ -183,13 +193,33 @@ if st.button("🚀 Generate Mains Paper", type="primary", use_container_width=Tr
     st.error(
         "Groq API Key is missing. Please add it to Streamlit Secrets or sidebar."
     )
-  elif not topic_input:
-    st.warning("Please enter a subject or topic.")
+  elif not subject_input.strip():
+    st.warning("Please enter a Subject (e.g., GS-2 Polity, GS-3 Economy).")
   else:
     try:
       client = Groq(api_key=groq_api_key)
 
-      user_prompt = f"Generate a {target_exam} Daily Mains Answer Writing Paper on topic: '{topic_input}'. Difficulty Level: {difficulty}. Total Questions: {num_questions}."
+      # Handle optional topic logic
+      if topic_input.strip():
+        topic_details = (
+            f"Subject: '{subject_input.strip()}', Specific Topic:"
+            f" '{topic_input.strip()}'"
+        )
+        file_name_tag = (
+            f"{subject_input}_{topic_input}".replace(" ", "_")
+            .replace("/", "_")
+            .strip()
+        )
+      else:
+        topic_details = (
+            f"Subject: '{subject_input.strip()}'. (Please automatically select a"
+            " high-yield, priority topic suitable for Mains from this subject)"
+        )
+        file_name_tag = (
+            subject_input.replace(" ", "_").replace("/", "_").strip()
+        )
+
+      user_prompt = f"Generate a {target_exam} Daily Mains Answer Writing Paper. {topic_details}. Difficulty Level: {difficulty}. Total Questions: {num_questions}."
 
       with st.spinner(
           f"Generating {difficulty}-level paper via Groq (Llama 3.3 70B)..."
@@ -208,14 +238,12 @@ if st.button("🚀 Generate Mains Paper", type="primary", use_container_width=Tr
 
         st.success("Paper Generated Successfully!")
 
-        # Download Button prominently at the top of results
+        # Download Button
         docx_file = create_docx(generated_paper)
         st.download_button(
             label="📥 Download as Pre-formatted Word Document (.docx)",
             data=docx_file,
-            file_name=(
-                f"{target_exam}_{topic_input.replace(' ', '_')}_{difficulty}_Paper.docx"
-            ),
+            file_name=f"{target_exam}_{file_name_tag}_{difficulty}_Paper.docx",
             mime=(
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             ),
