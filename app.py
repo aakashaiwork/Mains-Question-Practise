@@ -79,36 +79,36 @@ def create_docx(text_content):
     section.right_margin = Inches(0.5)
 
   # Set default font style to Verdana Size 10
-  style = doc.styles['Normal']
+  style = doc.styles["Normal"]
   font = style.font
-  font.name = 'Verdana'
+  font.name = "Verdana"
   font.size = Pt(10)
 
   # Process markdown text line by line
-  for line in text_content.split('\n'):
+  for line in text_content.split("\n"):
     line = line.strip()
     if not line:
       doc.add_paragraph()
       continue
 
-    if line.startswith('# '):
+    if line.startswith("# "):
       p = doc.add_paragraph()
-      run = p.add_run(line.replace('# ', ''))
+      run = p.add_run(line.replace("# ", ""))
       run.font.size = Pt(14)
       run.bold = True
-    elif line.startswith('## '):
+    elif line.startswith("## "):
       p = doc.add_paragraph()
-      run = p.add_run(line.replace('## ', ''))
+      run = p.add_run(line.replace("## ", ""))
       run.font.size = Pt(12)
       run.bold = True
-    elif line.startswith('### '):
+    elif line.startswith("### "):
       p = doc.add_paragraph()
-      run = p.add_run(line.replace('### ', ''))
+      run = p.add_run(line.replace("### ", ""))
       run.font.size = Pt(11)
       run.bold = True
-    elif line.startswith('- '):
-      p = doc.add_paragraph(style='List Bullet')
-      p.add_run(line.replace('- ', ''))
+    elif line.startswith("- "):
+      p = doc.add_paragraph(style="List Bullet")
+      p.add_run(line.replace("- ", ""))
     else:
       p = doc.add_paragraph(line)
 
@@ -131,31 +131,54 @@ st.caption(
     " Hindi)"
 )
 
-# Fetch API Key automatically from Streamlit Secrets if configured, else sidebar
-api_key_secret = st.secrets.get("GROQ_API_KEY", "")
+# Fetch API Key automatically from Streamlit Secrets if configured
+groq_api_key = ""
+try:
+  if "GROQ_API_KEY" in st.secrets and st.secrets["GROQ_API_KEY"]:
+    groq_api_key = st.secrets["GROQ_API_KEY"]
+    st.sidebar.success("✅ Groq API Key Active!")
+except Exception:
+  pass
 
-st.sidebar.header("⚙️ Settings")
-if api_key_secret:
-  groq_api_key = api_key_secret
-  st.sidebar.success("API Key auto-loaded from App Secrets!")
-else:
-  groq_api_key = st.sidebar.text_input("Enter Groq API Key", type="password")
+if not groq_api_key:
+  st.sidebar.header("⚙️ API Configuration")
+  groq_api_key = st.sidebar.text_input(
+      "Enter Groq API Key", type="password", help="Get key from console.groq.com"
+  )
 
-target_exam = st.sidebar.selectbox("Target Exam", ["UPSC", "GPSC"])
-difficulty = st.sidebar.selectbox(
-    "Difficulty Level", ["Moderate", "Easy", "Difficult"]
-)
-num_questions = st.sidebar.number_input(
-    "Number of Questions", min_value=1, max_value=3, value=1
-)
+# --- MAIN FORM INPUTS ---
+st.subheader("📋 Paper Parameters")
 
-# Main Form
 topic_input = st.text_input(
-    "Subject / Topic Name",
-    placeholder="e.g., GS-2 Judiciary, GS-3 Renewable Energy, GS-1 Modern History",
+    "1. Subject / Topic Name",
+    placeholder="e.g., GS-2 Judicial Review, GS-3 Renewable Energy, GS-1 Modern History",
 )
 
-if st.button("🚀 Generate Mains Paper", type="primary"):
+# 3 Columns for main controls
+col1, col2, col3 = st.columns(3)
+
+with col1:
+  difficulty = st.selectbox(
+      "2. Level of Difficulty",
+      ["Moderate", "Easy", "Difficult"],
+      help=(
+          "Easy = Short ~150w | Moderate = Standard ~250w | Difficult = Long"
+          " ~250w+"
+      ),
+  )
+
+with col2:
+  target_exam = st.selectbox("3. Target Exam", ["UPSC", "GPSC"])
+
+with col3:
+  num_questions = st.number_input(
+      "4. Number of Questions", min_value=1, max_value=3, value=1
+  )
+
+st.divider()
+
+# --- GENERATE ACTION ---
+if st.button("🚀 Generate Mains Paper", type="primary", use_container_width=True):
   if not groq_api_key:
     st.error(
         "Groq API Key is missing. Please add it to Streamlit Secrets or sidebar."
@@ -166,11 +189,10 @@ if st.button("🚀 Generate Mains Paper", type="primary"):
     try:
       client = Groq(api_key=groq_api_key)
 
-      user_prompt = f"Generate a {target_exam} Daily Mains Answer Writing Paper on the topic: '{topic_input}'. Difficulty Level: {difficulty}. Total Questions: {num_questions}."
+      user_prompt = f"Generate a {target_exam} Daily Mains Answer Writing Paper on topic: '{topic_input}'. Difficulty Level: {difficulty}. Total Questions: {num_questions}."
 
       with st.spinner(
-          "Analyzing PYQs and generating trilingual answers via Groq (Llama"
-          " 3.3 70B)..."
+          f"Generating {difficulty}-level paper via Groq (Llama 3.3 70B)..."
       ):
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
@@ -185,20 +207,23 @@ if st.button("🚀 Generate Mains Paper", type="primary"):
         generated_paper = response.choices[0].message.content
 
         st.success("Paper Generated Successfully!")
-        st.markdown(generated_paper)
 
-        # Download Button
+        # Download Button prominently at the top of results
         docx_file = create_docx(generated_paper)
         st.download_button(
             label="📥 Download as Pre-formatted Word Document (.docx)",
             data=docx_file,
             file_name=(
-                f"{target_exam}_{topic_input.replace(' ', '_')}_Mains_Paper.docx"
+                f"{target_exam}_{topic_input.replace(' ', '_')}_{difficulty}_Paper.docx"
             ),
             mime=(
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             ),
+            type="primary",
         )
+
+        st.divider()
+        st.markdown(generated_paper)
 
     except Exception as e:
       st.error(f"An error occurred: {str(e)}")
