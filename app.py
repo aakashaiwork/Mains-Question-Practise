@@ -46,8 +46,8 @@ YOU MUST DECLINE TO ANSWER with: "This application is strictly configured to gen
 # DOCUMENT FORMATTING SPECIFICATIONS
 - Do NOT include any visual placeholders, diagram hints, or textual blocks for flowcharts/diagrams.
 
-# MULTI-LANGUAGE MANDATE
-Every valid paper response MUST be generated sequentially in three languages:
+# MULTI-LANGUAGE MANDATE (MANDATORY COMPLETE ALL THREE)
+You MUST generate the output sequentially in all THREE languages without omitting or truncating any section:
 1. ENGLISH
 2. GUJARATI (ગુજરાતી)
 3. HINDI (हिंदी)
@@ -145,15 +145,15 @@ def create_docx(text_content):
 # --- DATABASE HELPERS (GOOGLE SHEETS) ---
 def get_past_questions_from_db(subject_name):
   try:
-    conn = st.connection("gsheets", type=GSheetsConnection)
-    df = conn.read(ttl="0s")
-    if df is not None and not df.empty and "Subject" in df.columns:
-      # Filter questions matching subject
-      matching_rows = df[
-          df["Subject"].str.contains(subject_name, case=False, na=False)
-      ]
-      if not matching_rows.empty and "Question_Text" in matching_rows.columns:
-        return matching_rows["Question_Text"].dropna().tolist()
+    if "connections" in st.secrets and "gsheets" in st.secrets["connections"]:
+      conn = st.connection("gsheets", type=GSheetsConnection)
+      df = conn.read(ttl="0s")
+      if df is not None and not df.empty and "Subject" in df.columns:
+        matching_rows = df[
+            df["Subject"].str.contains(subject_name, case=False, na=False)
+        ]
+        if not matching_rows.empty and "Question_Text" in matching_rows.columns:
+          return matching_rows["Question_Text"].dropna().tolist()
   except Exception:
     pass
   return []
@@ -163,42 +163,42 @@ def save_question_to_db(
     target_exam, subject, topic, difficulty, generated_text
 ):
   try:
-    conn = st.connection("gsheets", type=GSheetsConnection)
-    existing_df = conn.read(ttl="0s")
+    if "connections" in st.secrets and "gsheets" in st.secrets["connections"]:
+      conn = st.connection("gsheets", type=GSheetsConnection)
+      existing_df = conn.read(ttl="0s")
 
-    # Extract Question 1 English text to store cleanly in DB
-    question_snippet = generated_text
-    if "### QUESTION 1" in generated_text:
-      question_snippet = (
-          generated_text.split("### QUESTION 1")[1]
-          .split("#### MODEL ANSWER")[0]
-          .strip()
-      )
+      question_snippet = generated_text
+      if "### QUESTION 1" in generated_text:
+        question_snippet = (
+            generated_text.split("### QUESTION 1")[1]
+            .split("#### MODEL ANSWER")[0]
+            .strip()
+        )
 
-    new_row = pd.DataFrame([{
-        "Date": str(datetime.date.today()),
-        "Target_Exam": target_exam,
-        "Subject": subject,
-        "Topic": topic if topic else "Auto-selected",
-        "Difficulty": difficulty,
-        "Question_Text": question_snippet[:500],  # store key snippet
-    }])
+      new_row = pd.DataFrame([{
+          "Date": str(datetime.date.today()),
+          "Target_Exam": target_exam,
+          "Subject": subject,
+          "Topic": topic if topic else "Auto-selected",
+          "Difficulty": difficulty,
+          "Question_Text": question_snippet[:500],
+      }])
 
-    if existing_df is not None and not existing_df.empty:
-      updated_df = pd.concat([existing_df, new_row], ignore_index=True)
-    else:
-      updated_df = new_row
+      if existing_df is not None and not existing_df.empty:
+        updated_df = pd.concat([existing_df, new_row], ignore_index=True)
+      else:
+        updated_df = new_row
 
-    conn.update(data=updated_df)
+      conn.update(data=updated_df)
   except Exception as e:
-    st.caption(f"Note: Could not log to Google Sheets database: {e}")
+    pass  # Silently skip logging if URL is invalid without breaking paper display
 
 
 # --- MAIN INTERFACE HEADER ---
 st.title("📝 UPSC / GPSC Daily Mains Paper Generator")
 st.caption(
-    "Powered by Groq + Llama 3.3 70B | Integrated with Google Sheets Question"
-    " Bank"
+    "Powered by Groq + Llama 3.3 70B | Trilingual Output (English, Gujarati,"
+    " Hindi)"
 )
 
 # Fetch API Key silently from Streamlit Secrets
@@ -272,7 +272,7 @@ if st.button("🚀 Generate Mains Paper", type="primary", use_container_width=Tr
       anti_duplication_prompt = ""
 
       if past_questions:
-        past_q_str = "\n- ".join(past_questions[-10:])  # last 10 questions
+        past_q_str = "\n- ".join(past_questions[-10:])
         anti_duplication_prompt = (
             "\n\nCRITICAL ANTI-DUPLICATION INSTRUCTION:\nDo NOT repeat,"
             " rephrase, or generate questions similar to these previously"
@@ -303,9 +303,10 @@ if st.button("🚀 Generate Mains Paper", type="primary", use_container_width=Tr
       user_prompt = f"Generate a {target_exam} Daily Mains Answer Writing Paper. {topic_details}. Difficulty Level: {difficulty}. Total Questions: {num_questions}.{anti_duplication_prompt}"
 
       with st.spinner(
-          f"Checking Question Bank & Generating {difficulty}-level paper via"
-          " Groq (Llama 3.3 70B)..."
+          f"Generating complete trilingual {difficulty}-level paper via Groq"
+          " (Llama 3.3 70B)..."
       ):
+        # max_completion_tokens set to 8000 to allow full English + Gujarati + Hindi outputs
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[
@@ -313,12 +314,12 @@ if st.button("🚀 Generate Mains Paper", type="primary", use_container_width=Tr
                 {"role": "user", "content": user_prompt},
             ],
             temperature=0.4,
-            max_completion_tokens=4000,
+            max_completion_tokens=8000,
         )
 
         generated_paper = response.choices[0].message.content
 
-        # 3. Save newly generated question to Database
+        # Save to DB if connection exists
         save_question_to_db(
             target_exam,
             subject_input.strip(),
@@ -327,7 +328,7 @@ if st.button("🚀 Generate Mains Paper", type="primary", use_container_width=Tr
             generated_paper,
         )
 
-        st.success("Paper Generated & Saved to Question Bank Database!")
+        st.success("Paper Generated Successfully!")
 
         # Download Button
         docx_file = create_docx(generated_paper)
