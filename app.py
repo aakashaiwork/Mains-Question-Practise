@@ -1,9 +1,12 @@
+import datetime
 import io
 import docx
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Inches, Pt
 from groq import Groq
+import pandas as pd
 import streamlit as st
+from streamlit_gsheets import GSheetsConnection
 
 # --- STREAMLIT UI SETUP ---
 st.set_page_config(
@@ -139,11 +142,63 @@ def create_docx(text_content):
   return buffer
 
 
+# --- DATABASE HELPERS (GOOGLE SHEETS) ---
+def get_past_questions_from_db(subject_name):
+  try:
+    conn = st.connection("gsheets", type=GSheetsConnection)
+    df = conn.read(ttl="0s")
+    if df is not None and not df.empty and "Subject" in df.columns:
+      # Filter questions matching subject
+      matching_rows = df[
+          df["Subject"].str.contains(subject_name, case=False, na=False)
+      ]
+      if not matching_rows.empty and "Question_Text" in matching_rows.columns:
+        return matching_rows["Question_Text"].dropna().tolist()
+  except Exception:
+    pass
+  return []
+
+
+def save_question_to_db(
+    target_exam, subject, topic, difficulty, generated_text
+):
+  try:
+    conn = st.connection("gsheets", type=GSheetsConnection)
+    existing_df = conn.read(ttl="0s")
+
+    # Extract Question 1 English text to store cleanly in DB
+    question_snippet = generated_text
+    if "### QUESTION 1" in generated_text:
+      question_snippet = (
+          generated_text.split("### QUESTION 1")[1]
+          .split("#### MODEL ANSWER")[0]
+          .strip()
+      )
+
+    new_row = pd.DataFrame([{
+        "Date": str(datetime.date.today()),
+        "Target_Exam": target_exam,
+        "Subject": subject,
+        "Topic": topic if topic else "Auto-selected",
+        "Difficulty": difficulty,
+        "Question_Text": question_snippet[:500],  # store key snippet
+    }])
+
+    if existing_df is not None and not existing_df.empty:
+      updated_df = pd.concat([existing_df, new_row], ignore_index=True)
+    else:
+      updated_df = new_row
+
+    conn.update(data=updated_df)
+  except Exception as e:
+    st.caption(f"Note: Could not log to Google Sheets database: {e}")
+
+
 # --- MAIN INTERFACE HEADER ---
 st.title("📝 UPSC / GPSC Daily Mains Paper Generator")
 st.caption(
-    "Powered by Groq + Llama 3.3 70B | Trilingual Output (English, Gujarati,"
-    " Hindi)"
+    "Powered by Groq + Llama 3.3 70B | Integrated with Google Sheets Question"
+    " Bank"
 )
 
 # Fetch API Key silently from Streamlit Secrets
@@ -154,7 +209,6 @@ try:
 except Exception:
   pass
 
-# Fallback only if key is missing from Secrets
 if not groq_api_key:
   groq_api_key = st.sidebar.text_input(
       "Enter Groq API Key", type="password", help="Get key from console.groq.com"
@@ -213,7 +267,20 @@ if st.button("🚀 Generate Mains Paper", type="primary", use_container_width=Tr
     try:
       client = Groq(api_key=groq_api_key)
 
-      # Handle optional topic logic
+      # 1. Fetch past questions from Google Sheet Database
+      past_questions = get_past_questions_from_db(subject_input.strip())
+      anti_duplication_prompt = ""
+
+      if past_questions:
+        past_q_str = "\n- ".join(past_questions[-10:])  # last 10 questions
+        anti_duplication_prompt = (
+            "\n\nCRITICAL ANTI-DUPLICATION INSTRUCTION:\nDo NOT repeat,"
+            " rephrase, or generate questions similar to these previously"
+            " generated questions from the database:\n- "
+            + past_q_str
+        )
+
+      # 2. Build Prompt
       if topic_input.strip():
         topic_details = (
             f"Subject: '{subject_input.strip()}', Specific Topic:"
@@ -233,10 +300,11 @@ if st.button("🚀 Generate Mains Paper", type="primary", use_container_width=Tr
             subject_input.replace(" ", "_").replace("/", "_").strip()
         )
 
-      user_prompt = f"Generate a {target_exam} Daily Mains Answer Writing Paper. {topic_details}. Difficulty Level: {difficulty}. Total Questions: {num_questions}."
+      user_prompt = f"Generate a {target_exam} Daily Mains Answer Writing Paper. {topic_details}. Difficulty Level: {difficulty}. Total Questions: {num_questions}.{anti_duplication_prompt}"
 
       with st.spinner(
-          f"Generating {difficulty}-level paper via Groq (Llama 3.3 70B)..."
+          f"Checking Question Bank & Generating {difficulty}-level paper via"
+          " Groq (Llama 3.3 70B)..."
       ):
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
@@ -250,7 +318,16 @@ if st.button("🚀 Generate Mains Paper", type="primary", use_container_width=Tr
 
         generated_paper = response.choices[0].message.content
 
-        st.success("Paper Generated Successfully!")
+        # 3. Save newly generated question to Database
+        save_question_to_db(
+            target_exam,
+            subject_input.strip(),
+            topic_input.strip(),
+            difficulty,
+            generated_paper,
+        )
+
+        st.success("Paper Generated & Saved to Question Bank Database!")
 
         # Download Button
         docx_file = create_docx(generated_paper)
