@@ -29,7 +29,7 @@ hide_streamlit_style = """
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
-# System Prompt containing updated word count requirements
+# System Prompt containing updated single-language requirement
 SYSTEM_PROMPT = """
 You are an exclusive Civil Services Examination Content Creator and Senior Evaluator specializing solely in UPSC (Union Public Service Commission) and GPSC (Gujarat Public Service Commission) Mains General Studies papers.
 Your primary objective is to generate high-quality Mains examination questions and model solutions strictly matching the current difficulty, syllabus, analytical depth, and formatting standards of UPSC/GPSC.
@@ -59,13 +59,9 @@ Tailor the question length, complexity, and answer word count strictly according
 # DOCUMENT FORMATTING SPECIFICATIONS
 - Do NOT include any visual placeholders, diagram hints, or textual blocks for flowcharts/diagrams.
 
-# MULTI-LANGUAGE MANDATE (MANDATORY COMPLETE ALL THREE)
-You MUST generate the output sequentially in all THREE languages without omitting or truncating any section:
-1. ENGLISH
-2. GUJARATI (ગુજરાતી)
-3. HINDI (हिंदी)
-
-Maintain high academic rigor and formal administrative terminology across all three translations.
+# LANGUAGE DIRECTIVE
+Generate the entire paper (questions, instructions, and model answers) strictly in the language specified by the user (English, Gujarati, or Hindi). 
+Maintain high academic rigor, formal administrative terminology, and native fluency appropriate for civil services examinations. Do NOT output translations in other languages.
 
 # MODEL SOLUTION STRUCTURE
 1. Introduction (10-15% of Word Limit): Open directly with a definition, recent context/news, Constitutional Article/Supreme Court judgment, relevant statistic, or Committee recommendation.
@@ -73,34 +69,25 @@ Maintain high academic rigor and formal administrative terminology across all th
 3. Conclusion (10-15% of Word Limit): Forward-looking, solution-oriented, and constructive (e.g., Viksit Bharat @2047, Net Zero, Constitutional ideals).
 
 # OUTPUT FORMAT FOR THE RESPONSE
-Always present the final output neatly using standard Markdown, fully repeating the output in all three languages:
+Always present the final output neatly using standard Markdown in the requested language:
 
-# 📝 SECTION 1: ENGLISH VERSION
 ## DAILY MAINS ANSWER WRITING PAPER
-Target Exam: [UPSC / GPSC] | Subject: [Subject Name] | Difficulty: [Easy / Moderate / Difficult]  
-Total Questions: [Count] | Word Limit: [200 / 300 / 500 words]  
+Target Exam: [UPSC / GPSC] | Subject: [Subject Name] | Difficulty: [Easy / Moderate / Difficult] | Language: [Language]  
+Total Questions: [Count] | Word Limit: [200 / 300 / 500 words per answer]  
 
 ### QUESTION 1
-[Question text in English]  
+[Question text in specified language]  
 Marks: [10 / 15 / 20 Marks] | Word Limit: [200 / 300 / 500 words]
 
 #### MODEL ANSWER
 1. Introduction  
-[Introduction text]
+[Introduction text in specified language]
 
 2. Body  
-[Sub-headings and bullet points]
+[Sub-headings and bullet points in specified language]
 
 3. Conclusion  
-[Conclusion text]
-
----
-# 📝 SECTION 2: GUJARATI VERSION (ગુજરાતી આવૃત્તિ)
-[Repeat full format in Gujarati]
-
----
-# 📝 SECTION 3: HINDI VERSION (हिंदी संस्करण)
-[Repeat full format in Hindi]
+[Conclusion text in specified language]
 """
 
 
@@ -209,10 +196,7 @@ def save_question_to_db(
 
 # --- MAIN INTERFACE HEADER ---
 st.title("📝 UPSC / GPSC Daily Mains Paper Generator")
-st.caption(
-    "Powered by Groq + Llama 3.3 70B | Trilingual Output (English, Gujarati,"
-    " Hindi)"
-)
+st.caption("Powered by Groq + Llama 3.3 70B | Integrated Question Bank")
 
 # Fetch API Key silently from Streamlit Secrets
 groq_api_key = ""
@@ -246,11 +230,11 @@ with col_top:
       ),
   )
 
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns([1.5, 1.2, 2, 1.2])
 
 with col1:
   difficulty = st.selectbox(
-      "3. Level of Difficulty",
+      "3. Difficulty Level",
       ["Moderate", "Easy", "Difficult"],
       help="Easy = ~200 words | Moderate = ~300 words | Difficult = ~500 words",
   )
@@ -259,8 +243,17 @@ with col2:
   target_exam = st.selectbox("4. Target Exam", ["UPSC", "GPSC"])
 
 with col3:
+  language = st.radio(
+      "5. Language",
+      ["English", "Gujarati", "Hindi"],
+      index=0,
+      horizontal=True,
+      help="Select language for question paper and model solution.",
+  )
+
+with col4:
   num_questions = st.number_input(
-      "5. Number of Questions", min_value=1, max_value=3, value=1
+      "6. Questions", min_value=1, max_value=3, value=1
   )
 
 st.divider()
@@ -310,11 +303,11 @@ if st.button("🚀 Generate Mains Paper", type="primary", use_container_width=Tr
             subject_input.replace(" ", "_").replace("/", "_").strip()
         )
 
-      user_prompt = f"Generate a {target_exam} Daily Mains Answer Writing Paper. {topic_details}. Difficulty Level: {difficulty}. Total Questions: {num_questions}.{anti_duplication_prompt}"
+      user_prompt = f"Generate a {target_exam} Daily Mains Answer Writing Paper strictly in {language} language. {topic_details}. Difficulty Level: {difficulty}. Total Questions: {num_questions}.{anti_duplication_prompt}"
 
       with st.spinner(
-          f"Generating complete trilingual {difficulty}-level paper via Groq"
-          " (Llama 3.3 70B)..."
+          f"Generating {language} {difficulty}-level paper via Groq (Llama 3.3"
+          " 70B)..."
       ):
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
@@ -323,7 +316,7 @@ if st.button("🚀 Generate Mains Paper", type="primary", use_container_width=Tr
                 {"role": "user", "content": user_prompt},
             ],
             temperature=0.4,
-            max_completion_tokens=8000,
+            max_completion_tokens=4000,
         )
 
         generated_paper = response.choices[0].message.content
@@ -337,14 +330,19 @@ if st.button("🚀 Generate Mains Paper", type="primary", use_container_width=Tr
             generated_paper,
         )
 
-        st.success("Paper Generated Successfully!")
+        st.success(f"{language} Mains Paper Generated Successfully!")
 
         # Download Button
         docx_file = create_docx(generated_paper)
         st.download_button(
-            label="📥 Download as Pre-formatted Word Document (.docx)",
+            label=(
+                "📥 Download as Pre-formatted Word Document (.docx) -"
+                f" {language}"
+            ),
             data=docx_file,
-            file_name=f"{target_exam}_{file_name_tag}_{difficulty}_Paper.docx",
+            file_name=(
+                f"{target_exam}_{file_name_tag}_{difficulty}_{language}_Paper.docx"
+            ),
             mime=(
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             ),
