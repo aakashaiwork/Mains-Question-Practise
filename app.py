@@ -123,6 +123,7 @@ st.set_page_config(
     page_title="UPSC/GPSC Mains Paper Generator",
     page_icon="📝",
     layout="wide",
+    initial_sidebar_state="collapsed",  # Keeps sidebar hidden by default
 )
 
 st.title("📝 UPSC / GPSC Daily Mains Paper Generator")
@@ -131,17 +132,16 @@ st.caption(
     " Hindi)"
 )
 
-# Fetch API Key automatically from Streamlit Secrets if configured
+# Fetch API Key silently from Streamlit Secrets
 groq_api_key = ""
 try:
   if "GROQ_API_KEY" in st.secrets and st.secrets["GROQ_API_KEY"]:
     groq_api_key = st.secrets["GROQ_API_KEY"]
-    st.sidebar.success("✅ Groq API Key Active!")
 except Exception:
   pass
 
+# Fallback only if key is missing from Secrets
 if not groq_api_key:
-  st.sidebar.header("⚙️ API Configuration")
   groq_api_key = st.sidebar.text_input(
       "Enter Groq API Key", type="password", help="Get key from console.groq.com"
   )
@@ -191,7 +191,7 @@ st.divider()
 if st.button("🚀 Generate Mains Paper", type="primary", use_container_width=True):
   if not groq_api_key:
     st.error(
-        "Groq API Key is missing. Please add it to Streamlit Secrets or sidebar."
+        "Groq API Key is missing. Please add GROQ_API_KEY to Streamlit Secrets."
     )
   elif not subject_input.strip():
     st.warning("Please enter a Subject (e.g., GS-2 Polity, GS-3 Economy).")
