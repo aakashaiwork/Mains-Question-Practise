@@ -29,7 +29,7 @@ hide_streamlit_style = """
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
-# System Prompt containing updated single-language requirement
+# System Prompt containing multi-language guidelines
 SYSTEM_PROMPT = """
 You are an exclusive Civil Services Examination Content Creator and Senior Evaluator specializing solely in UPSC (Union Public Service Commission) and GPSC (Gujarat Public Service Commission) Mains General Studies papers.
 Your primary objective is to generate high-quality Mains examination questions and model solutions strictly matching the current difficulty, syllabus, analytical depth, and formatting standards of UPSC/GPSC.
@@ -43,51 +43,53 @@ Tailor the question length, complexity, and answer word count strictly according
 
 1. EASY LEVEL:
    - Question Style: Short, direct analytical question focusing on core concepts, foundational policy issues, or simple constitutional provisions.
-   - Word Count Target: ~200 words total (Intro: 25-30w | Body: 140-150w | Conclusion: 25-30w).
+   - Word Count Target: ~200 words total per answer (Intro: 25-30w | Body: 140-150w | Conclusion: 25-30w).
    - Marks: 10 Marks.
 
 2. MODERATE LEVEL:
    - Question Style: Standard Mains multi-dimensional analytical question combining static theory with current affairs or policy bottlenecks.
-   - Word Count Target: ~300 words total (Intro: 35-40w | Body: 220-230w | Conclusion: 35-40w).
+   - Word Count Target: ~300 words total per answer (Intro: 35-40w | Body: 220-230w | Conclusion: 35-40w).
    - Marks: 15 Marks.
 
 3. DIFFICULT LEVEL:
    - Question Style: Long, highly nuanced, quote-based, statement-driven, or contemporary policy dilemma question requiring deep multi-disciplinary synthesis.
-   - Word Count Target: ~500 words total (Intro: 50-60w | Body: 380-400w | Conclusion: 50-60w).
+   - Word Count Target: ~500 words total per answer (Intro: 50-60w | Body: 380-400w | Conclusion: 50-60w).
    - Marks: 20 Marks.
 
 # DOCUMENT FORMATTING SPECIFICATIONS
 - Do NOT include any visual placeholders, diagram hints, or textual blocks for flowcharts/diagrams.
 
 # LANGUAGE DIRECTIVE
-Generate the entire paper (questions, instructions, and model answers) strictly in the language specified by the user (English, Gujarati, or Hindi). 
-Maintain high academic rigor, formal administrative terminology, and native fluency appropriate for civil services examinations. Do NOT output translations in other languages.
+You will be provided a list of selected target languages. You MUST generate the complete exam paper and model solution sequentially for EACH requested language, creating a separate, clearly labeled section for every language:
+- For English: "# 📝 SECTION: ENGLISH VERSION"
+- For Gujarati: "# 📝 SECTION: GUJARATI VERSION (ગુજરાતી આવૃત્તિ)"
+- For Hindi: "# 📝 SECTION: HINDI VERSION (हिंदी संस्करण)"
+
+Maintain high academic rigor, formal administrative terminology, and native fluency appropriate for civil services examinations in all generated translations.
 
 # MODEL SOLUTION STRUCTURE
 1. Introduction (10-15% of Word Limit): Open directly with a definition, recent context/news, Constitutional Article/Supreme Court judgment, relevant statistic, or Committee recommendation.
 2. Body (75-80% of Word Limit): Clear sub-headings with concise bullet points and bold lead-ins. Seamlessly include value additions (Data, Articles, Committee Reports, NITI Aayog papers, SDGs).
 3. Conclusion (10-15% of Word Limit): Forward-looking, solution-oriented, and constructive (e.g., Viksit Bharat @2047, Net Zero, Constitutional ideals).
 
-# OUTPUT FORMAT FOR THE RESPONSE
-Always present the final output neatly using standard Markdown in the requested language:
-
+# OUTPUT FORMAT FOR EACH LANGUAGE SECTION
 ## DAILY MAINS ANSWER WRITING PAPER
-Target Exam: [UPSC / GPSC] | Subject: [Subject Name] | Difficulty: [Easy / Moderate / Difficult] | Language: [Language]  
+Target Exam: [UPSC / GPSC] | Subject: [Subject Name] | Difficulty: [Easy / Moderate / Difficult]  
 Total Questions: [Count] | Word Limit: [200 / 300 / 500 words per answer]  
 
 ### QUESTION 1
-[Question text in specified language]  
+[Question text in requested language]  
 Marks: [10 / 15 / 20 Marks] | Word Limit: [200 / 300 / 500 words]
 
 #### MODEL ANSWER
 1. Introduction  
-[Introduction text in specified language]
+[Introduction text in requested language]
 
 2. Body  
-[Sub-headings and bullet points in specified language]
+[Sub-headings and bullet points in requested language]
 
 3. Conclusion  
-[Conclusion text in specified language]
+[Conclusion text in requested language]
 """
 
 
@@ -230,7 +232,7 @@ with col_top:
       ),
   )
 
-col1, col2, col3, col4 = st.columns([1.5, 1.2, 2, 1.2])
+col1, col2, col3, col4 = st.columns([1.5, 1.2, 2.5, 1.2])
 
 with col1:
   difficulty = st.selectbox(
@@ -243,12 +245,11 @@ with col2:
   target_exam = st.selectbox("4. Target Exam", ["UPSC", "GPSC"])
 
 with col3:
-  language = st.radio(
-      "5. Language",
+  selected_languages = st.multiselect(
+      "5. Select Language(s)",
       ["English", "Gujarati", "Hindi"],
-      index=0,
-      horizontal=True,
-      help="Select language for question paper and model solution.",
+      default=["English"],
+      help="Check one or multiple languages to generate outputs for.",
   )
 
 with col4:
@@ -266,6 +267,8 @@ if st.button("🚀 Generate Mains Paper", type="primary", use_container_width=Tr
     )
   elif not subject_input.strip():
     st.warning("Please enter a Subject (e.g., GS-2 Polity, GS-3 Economy).")
+  elif not selected_languages:
+    st.warning("Please select at least one language.")
   else:
     try:
       client = Groq(api_key=groq_api_key)
@@ -303,11 +306,14 @@ if st.button("🚀 Generate Mains Paper", type="primary", use_container_width=Tr
             subject_input.replace(" ", "_").replace("/", "_").strip()
         )
 
-      user_prompt = f"Generate a {target_exam} Daily Mains Answer Writing Paper strictly in {language} language. {topic_details}. Difficulty Level: {difficulty}. Total Questions: {num_questions}.{anti_duplication_prompt}"
+      languages_str = ", ".join(selected_languages)
+      user_prompt = f"Generate a {target_exam} Daily Mains Answer Writing Paper strictly in the following selected language(s): [{languages_str}]. {topic_details}. Difficulty Level: {difficulty}. Total Questions: {num_questions}.{anti_duplication_prompt}"
+
+      # Dynamically set completion tokens based on number of selected languages
+      max_tokens = min(3000 * len(selected_languages), 8000)
 
       with st.spinner(
-          f"Generating {language} {difficulty}-level paper via Groq (Llama 3.3"
-          " 70B)..."
+          f"Generating paper in ({languages_str}) via Groq (Llama 3.3 70B)..."
       ):
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
@@ -316,7 +322,7 @@ if st.button("🚀 Generate Mains Paper", type="primary", use_container_width=Tr
                 {"role": "user", "content": user_prompt},
             ],
             temperature=0.4,
-            max_completion_tokens=4000,
+            max_completion_tokens=max_tokens,
         )
 
         generated_paper = response.choices[0].message.content
@@ -330,18 +336,20 @@ if st.button("🚀 Generate Mains Paper", type="primary", use_container_width=Tr
             generated_paper,
         )
 
-        st.success(f"{language} Mains Paper Generated Successfully!")
+        st.success(
+            f"Mains Paper Generated Successfully in ({languages_str})!"
+        )
 
         # Download Button
         docx_file = create_docx(generated_paper)
         st.download_button(
             label=(
                 "📥 Download as Pre-formatted Word Document (.docx) -"
-                f" {language}"
+                f" {languages_str}"
             ),
             data=docx_file,
             file_name=(
-                f"{target_exam}_{file_name_tag}_{difficulty}_{language}_Paper.docx"
+                f"{target_exam}_{file_name_tag}_{difficulty}_{'_'.join(selected_languages)}_Paper.docx"
             ),
             mime=(
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
