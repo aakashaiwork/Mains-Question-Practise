@@ -29,7 +29,7 @@ hide_streamlit_style = """
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
-# System Prompt containing all specific directives
+# System Prompt containing updated word count requirements
 SYSTEM_PROMPT = """
 You are an exclusive Civil Services Examination Content Creator and Senior Evaluator specializing solely in UPSC (Union Public Service Commission) and GPSC (Gujarat Public Service Commission) Mains General Studies papers.
 Your primary objective is to generate high-quality Mains examination questions and model solutions strictly matching the current difficulty, syllabus, analytical depth, and formatting standards of UPSC/GPSC.
@@ -38,10 +38,23 @@ Your primary objective is to generate high-quality Mains examination questions a
 If the user's input is off-topic, general knowledge trivia, coding, personal advice, or non-exam related:
 YOU MUST DECLINE TO ANSWER with: "This application is strictly configured to generate UPSC/GPSC Mains Answer Writing Papers. Please enter a valid civil services subject/topic."
 
-# DIFFICULTY LEVEL FRAMEWORK
-1. EASY LEVEL: Short, direct analytical questions (~150 words / 10 Marks).
-2. MODERATE LEVEL: Standard Mains multi-dimensional analytical question (~250 words / 15 Marks).
-3. DIFFICULT LEVEL: Long, highly nuanced, quote-based, or contemporary policy dilemma questions requiring deep synthesis (~250+ words / 15-20 Marks).
+# DIFFICULTY LEVEL & STRICT WORD COUNT FRAMEWORK
+Tailor the question length, complexity, and answer word count strictly according to the requested difficulty level:
+
+1. EASY LEVEL:
+   - Question Style: Short, direct analytical question focusing on core concepts, foundational policy issues, or simple constitutional provisions.
+   - Word Count Target: ~200 words total (Intro: 25-30w | Body: 140-150w | Conclusion: 25-30w).
+   - Marks: 10 Marks.
+
+2. MODERATE LEVEL:
+   - Question Style: Standard Mains multi-dimensional analytical question combining static theory with current affairs or policy bottlenecks.
+   - Word Count Target: ~300 words total (Intro: 35-40w | Body: 220-230w | Conclusion: 35-40w).
+   - Marks: 15 Marks.
+
+3. DIFFICULT LEVEL:
+   - Question Style: Long, highly nuanced, quote-based, statement-driven, or contemporary policy dilemma question requiring deep multi-disciplinary synthesis.
+   - Word Count Target: ~500 words total (Intro: 50-60w | Body: 380-400w | Conclusion: 50-60w).
+   - Marks: 20 Marks.
 
 # DOCUMENT FORMATTING SPECIFICATIONS
 - Do NOT include any visual placeholders, diagram hints, or textual blocks for flowcharts/diagrams.
@@ -65,11 +78,11 @@ Always present the final output neatly using standard Markdown, fully repeating 
 # 📝 SECTION 1: ENGLISH VERSION
 ## DAILY MAINS ANSWER WRITING PAPER
 Target Exam: [UPSC / GPSC] | Subject: [Subject Name] | Difficulty: [Easy / Moderate / Difficult]  
-Total Questions: [Count] | Word Limit: [Words per question]  
+Total Questions: [Count] | Word Limit: [200 / 300 / 500 words]  
 
 ### QUESTION 1
 [Question text in English]  
-Marks: [10 / 15 Marks] | Word Limit: [150 / 250 words]
+Marks: [10 / 15 / 20 Marks] | Word Limit: [200 / 300 / 500 words]
 
 #### MODEL ANSWER
 1. Introduction  
@@ -190,8 +203,8 @@ def save_question_to_db(
         updated_df = new_row
 
       conn.update(data=updated_df)
-  except Exception as e:
-    pass  # Silently skip logging if URL is invalid without breaking paper display
+  except Exception:
+    pass
 
 
 # --- MAIN INTERFACE HEADER ---
@@ -239,10 +252,7 @@ with col1:
   difficulty = st.selectbox(
       "3. Level of Difficulty",
       ["Moderate", "Easy", "Difficult"],
-      help=(
-          "Easy = Short ~150w | Moderate = Standard ~250w | Difficult = Long"
-          " ~250w+"
-      ),
+      help="Easy = ~200 words | Moderate = ~300 words | Difficult = ~500 words",
   )
 
 with col2:
@@ -306,7 +316,6 @@ if st.button("🚀 Generate Mains Paper", type="primary", use_container_width=Tr
           f"Generating complete trilingual {difficulty}-level paper via Groq"
           " (Llama 3.3 70B)..."
       ):
-        # max_completion_tokens set to 8000 to allow full English + Gujarati + Hindi outputs
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[
