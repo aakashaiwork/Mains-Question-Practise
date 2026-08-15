@@ -198,7 +198,7 @@ def save_question_to_db(
 
 # --- MAIN INTERFACE HEADER ---
 st.title("📝 UPSC / GPSC Daily Mains Paper Generator")
-st.caption("Powered by Groq + Llama 3.3 70B | Integrated Question Bank")
+st.caption("Powered by Aakash Darji | Integrated Question Bank")
 
 # Fetch API Key silently from Streamlit Secrets
 groq_api_key = ""
@@ -313,10 +313,10 @@ if st.button("🚀 Generate Mains Paper", type="primary", use_container_width=Tr
       max_tokens = min(3000 * len(selected_languages), 8000)
 
       with st.spinner(
-          f"Generating paper in ({languages_str}) via Groq (Llama 3.3 70B)..."
+          f"Generating paper in ({languages_str}) via openai/gpt-oss-120b..."
       ):
         response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-120b",
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
