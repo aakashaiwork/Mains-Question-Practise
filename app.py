@@ -313,7 +313,7 @@ if st.button("🚀 Generate Mains Paper", type="primary", use_container_width=Tr
       max_tokens = min(3000 * len(selected_languages), 8000)
 
       with st.spinner(
-          f"Generating paper in ({languages_str}) via openai/gpt-oss-120b..."
+          f"Generating paper in ({languages_str})..."
       ):
         response = client.chat.completions.create(
             model="openai/gpt-oss-120b",
