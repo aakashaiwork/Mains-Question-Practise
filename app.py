@@ -1,9 +1,11 @@
 import datetime
 import io
+import re
 import docx
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Inches, Pt
 from groq import Groq
+from openai import OpenAI
 import pandas as pd
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
@@ -196,22 +198,72 @@ def save_question_to_db(
     pass
 
 
+# --- DUAL-ENGINE GENERATION WITH AUTOMATIC FALLBACK ---
+def generate_mains_paper(user_prompt, num_langs, nvidia_key, groq_key):
+  max_tokens_val = min(4000 * num_langs, 16384)
+
+  # Priority 1: NVIDIA Nemotron-3 Ultra
+  if nvidia_key:
+    try:
+      client_nv = OpenAI(
+          base_url="https://integrate.api.nvidia.com/v1", api_key=nvidia_key
+      )
+      response = client_nv.chat.completions.create(
+          model="nvidia/nemotron-3-ultra-550b-a55b",
+          messages=[
+              {"role": "system", "content": SYSTEM_PROMPT},
+              {"role": "user", "content": user_prompt},
+          ],
+          temperature=0.6,
+          top_p=0.95,
+          max_tokens=max_tokens_val,
+          extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+      )
+      raw_output = response.choices[0].message.content
+      cleaned_output = re.sub(
+          r"<think>.*?</think>", "", raw_output, flags=re.DOTALL
+      ).strip()
+      return cleaned_output, "NVIDIA Nemotron-3 Ultra"
+    except Exception as nv_err:
+      st.toast(
+          f"Nemotron API unavailable, switching to Groq fallback... ({str(nv_err)[:50]})"
+      )
+
+  # Priority 2: Groq Fallback
+  if groq_key:
+    client_groq = Groq(api_key=groq_key)
+    response = client_groq.chat.completions.create(
+        model="openai/gpt-oss-120b",
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ],
+        temperature=0.4,
+        max_completion_tokens=min(4000 * num_langs, 8000),
+    )
+    return response.choices[0].message.content, "Groq (GPT OSS 120B)"
+
+  raise ValueError("Neither NVIDIA API Key nor Groq API Key is available.")
+
+
 # --- MAIN INTERFACE HEADER ---
 st.title("📝 UPSC / GPSC Daily Mains Paper Generator")
-st.caption("Powered by Aakash Darji | Integrated Question Bank")
+st.caption(
+    "Dual AI Engine (NVIDIA Nemotron-3 Ultra with Groq Fallback) | Integrated"
+    " Question Bank"
+)
 
-# Fetch API Key silently from Streamlit Secrets
-groq_api_key = ""
-try:
-  if "GROQ_API_KEY" in st.secrets and st.secrets["GROQ_API_KEY"]:
-    groq_api_key = st.secrets["GROQ_API_KEY"]
-except Exception:
-  pass
+# Fetch API Keys from Streamlit Secrets
+nvidia_api_key = st.secrets.get("NVIDIA_API_KEY", "")
+groq_api_key = st.secrets.get("GROQ_API_KEY", "")
 
-if not groq_api_key:
-  groq_api_key = st.sidebar.text_input(
-      "Enter Groq API Key", type="password", help="Get key from console.groq.com"
+# Fallback inputs in sidebar if missing from Secrets
+if not nvidia_api_key and not groq_api_key:
+  st.sidebar.header("⚙️ API Configuration")
+  nvidia_api_key = st.sidebar.text_input(
+      "NVIDIA API Key (Priority 1)", type="password"
   )
+  groq_api_key = st.sidebar.text_input("Groq API Key (Fallback)", type="password")
 
 # --- MAIN FORM INPUTS ---
 st.subheader("📋 Paper Parameters")
@@ -261,9 +313,10 @@ st.divider()
 
 # --- GENERATE ACTION ---
 if st.button("🚀 Generate Mains Paper", type="primary", use_container_width=True):
-  if not groq_api_key:
+  if not nvidia_api_key and not groq_api_key:
     st.error(
-        "Groq API Key is missing. Please add GROQ_API_KEY to Streamlit Secrets."
+        "API Key is missing. Please add NVIDIA_API_KEY or GROQ_API_KEY in"
+        " Secrets."
     )
   elif not subject_input.strip():
     st.warning("Please enter a Subject (e.g., GS-2 Polity, GS-3 Economy).")
@@ -271,8 +324,6 @@ if st.button("🚀 Generate Mains Paper", type="primary", use_container_width=Tr
     st.warning("Please select at least one language.")
   else:
     try:
-      client = Groq(api_key=groq_api_key)
-
       # 1. Fetch past questions from Google Sheet Database
       past_questions = get_past_questions_from_db(subject_input.strip())
       anti_duplication_prompt = ""
@@ -309,23 +360,13 @@ if st.button("🚀 Generate Mains Paper", type="primary", use_container_width=Tr
       languages_str = ", ".join(selected_languages)
       user_prompt = f"Generate a {target_exam} Daily Mains Answer Writing Paper strictly in the following selected language(s): [{languages_str}]. {topic_details}. Difficulty Level: {difficulty}. Total Questions: {num_questions}.{anti_duplication_prompt}"
 
-      # Dynamically set completion tokens based on number of selected languages
-      max_tokens = min(3000 * len(selected_languages), 8000)
-
-      with st.spinner(
-          f"Generating paper in ({languages_str})..."
-      ):
-        response = client.chat.completions.create(
-            model="openai/gpt-oss-120b",
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.4,
-            max_completion_tokens=max_tokens,
+      with st.spinner(f"Generating paper in ({languages_str})..."):
+        generated_paper, engine_used = generate_mains_paper(
+            user_prompt=user_prompt,
+            num_langs=len(selected_languages),
+            nvidia_key=nvidia_api_key,
+            groq_key=groq_api_key,
         )
-
-        generated_paper = response.choices[0].message.content
 
         # Save to DB if connection exists
         save_question_to_db(
@@ -337,7 +378,8 @@ if st.button("🚀 Generate Mains Paper", type="primary", use_container_width=Tr
         )
 
         st.success(
-            f"Mains Paper Generated Successfully in ({languages_str})!"
+            f"Mains Paper Generated Successfully in ({languages_str}) via"
+            f" {engine_used}!"
         )
 
         # Download Button
