@@ -1,4 +1,5 @@
 streamlit
+openai
 groq
 python-docx
 st-gsheets-connection
